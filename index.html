@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quét Mã QR - Phiên bản MỚI (Hoạt động tốt hơn)</title>
-    <!-- Thư viện html5-qrcode (đáng tin cậy hơn jsQR rất nhiều) -->
+    <title>Quét Mã QR</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
@@ -14,40 +13,43 @@
         li { margin: 8px; padding: 10px; border: 1px solid #ddd; background: #f9f9f9; }
         button { padding: 12px 25px; margin: 10px; background: #4CAF50; color: white; border: none; cursor: pointer; font-size: 16px; }
         button:hover { background: #45a049; }
-        .note { background: #fff3cd; padding: 15px; border-radius: 8px; margin: 20px auto; max-width: 600px; }
     </style>
 </head>
 <body>
-    <h1>📱 Quét Mã QR</h1>
+    <h1>Quét Mã QR</h1>
     
-    <div class="note">
-        <strong>Lưu ý quan trọng:</strong><br>
-        Bạn PHẢI mở file HTML này qua <strong>localhost</strong> (không được mở trực tiếp file.html).<br>
-        Cách nhanh nhất: Dùng VS Code + Live Server hoặc chạy lệnh:<br>
-        <code>python -m http.server 8000</code> rồi truy cập http://localhost:8000
-    </div>
-
     <div id="reader"></div>
 
-    <button id="complete" style="display: none;">✅ Hoàn thành & Tải file XLSX</button>
+    <button id="complete" style="display: none;">Hoàn thành</button>
 
-    <h2>Danh sách mã đã quét (<span id="count">0</span>)</h2>
+    <h2>Danh sách</h2>
     <ul id="list"></ul>
 
     <script>
         let scannedCodes = [];
         let lastScanned = null;
-        let scanner;
+        let html5QrCode;
 
-        // Phát âm thanh beep
+        // Phát âm thanh beep (cải thiện để hoạt động tốt hơn)
         function playBeep() {
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const oscillator = audioCtx.createOscillator();
-            oscillator.type = 'sine';
-            oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
-            oscillator.connect(audioCtx.destination);
-            oscillator.start();
-            setTimeout(() => oscillator.stop(), 150);
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume().then(() => {
+                    const oscillator = audioCtx.createOscillator();
+                    oscillator.type = 'sine';
+                    oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
+                    oscillator.connect(audioCtx.destination);
+                    oscillator.start();
+                    setTimeout(() => oscillator.stop(), 150);
+                });
+            } else {
+                const oscillator = audioCtx.createOscillator();
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
+                oscillator.connect(audioCtx.destination);
+                oscillator.start();
+                setTimeout(() => oscillator.stop(), 150);
+            }
         }
 
         // Thêm vào danh sách
@@ -62,56 +64,54 @@
             scannedCodes.push(item);
 
             const li = document.createElement('li');
-            li.innerHTML = `<strong>STT ${item.stt}</strong> | ${item.time} | <strong>${item.code}</strong>`;
+            li.textContent = `${item.stt} | ${item.time} | ${item.code}`;
             document.getElementById('list').appendChild(li);
-            document.getElementById('count').textContent = stt;
         }
 
         // Callback khi quét thành công
-        function onScanSuccess(decodedText) {
-            if (decodedText === lastScanned) return; // Tránh lặp lại mã giống nhau
+        function onScanSuccess(decodedText, decodedResult) {
+            if (decodedText === lastScanned) return;
 
             playBeep();
             addToList(decodedText);
             lastScanned = decodedText;
 
-            // Cho phép quét lại cùng mã sau 2 giây
             setTimeout(() => { lastScanned = null; }, 2000);
         }
 
-        function onScanError(errorMessage) {
-            // Không cần hiển thị lỗi nhỏ
-        }
-
-        // Khởi tạo scanner
+        // Khởi tạo scanner với camera sau
         function startScanner() {
-            scanner = new Html5QrcodeScanner(
-                "reader",
-                {
-                    fps: 15,
-                    qrbox: { width: 280, height: 280 },
-                    aspectRatio: 1.0,
-                    showTorchButtonIfSupported: true,
-                    rememberLastUsedCamera: true
-                },
-                false
-            );
+            html5QrCode = new Html5Qrcode("reader");
+            const config = {
+                fps: 15,
+                qrbox: { width: 280, height: 280 },
+                aspectRatio: 1.0
+            };
 
-            scanner.render(onScanSuccess, onScanError);
-
-            // Hiển thị nút hoàn thành
-            document.getElementById('complete').style.display = 'inline-block';
+            html5QrCode.start(
+                { facingMode: "environment" },  // Force camera sau
+                config,
+                onScanSuccess,
+                (errorMessage) => {}  // Ignore errors
+            ).then(() => {
+                document.getElementById('complete').style.display = 'inline-block';
+            }).catch((err) => {
+                console.error("Lỗi khởi động camera: ", err);
+                alert('Không thể khởi động camera sau. Kiểm tra quyền truy cập.');
+            });
         }
 
         // Nút Hoàn thành
         document.getElementById('complete').addEventListener('click', () => {
             if (scannedCodes.length === 0) {
-                alert('Chưa có mã nào được quét!');
+                alert('Chưa có mã nào!');
                 return;
             }
 
             // Dừng scanner
-            if (scanner) scanner.clear();
+            if (html5QrCode) {
+                html5QrCode.stop().catch(err => console.error("Lỗi dừng scanner: ", err));
+            }
 
             // Tạo file XLSX
             const ws = XLSX.utils.json_to_sheet(scannedCodes.map(item => ({
@@ -119,16 +119,15 @@
                 'Ngày giờ': item.time,
                 'Mã đơn': item.code
             })));
-
             const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Danh sách QR');
+            XLSX.utils.book_append_sheet(wb, ws, 'Danh sách');
 
-            XLSX.writeFile(wb, `danh_sach_ma_qr_${new Date().toISOString().slice(0,10)}.xlsx`);
+            XLSX.writeFile(wb, 'danh_sach_ma_qr.xlsx');
 
-            alert('✅ File đã được tải xuống thành công!');
+            alert('File đã tải xuống!');
         });
 
-        // Bắt đầu ngay khi tải trang
+        // Bắt đầu ngay
         window.onload = startScanner;
     </script>
 </body>
