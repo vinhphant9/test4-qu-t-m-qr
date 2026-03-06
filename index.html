@@ -3,135 +3,133 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quét Mã QR và Tạo File XLSX</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+    <title>Quét Mã QR - Phiên bản MỚI (Hoạt động tốt hơn)</title>
+    <!-- Thư viện html5-qrcode (đáng tin cậy hơn jsQR rất nhiều) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; text-align: center; }
-        video { border: 1px solid #ccc; margin: 10px; }
-        ul { list-style-type: none; padding: 0; }
-        li { margin: 5px; padding: 5px; border: 1px solid #ddd; }
-        button { padding: 10px 20px; background: #4CAF50; color: white; border: none; cursor: pointer; margin: 5px; }
+        body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
+        #reader { width: 100%; max-width: 400px; margin: 20px auto; border: 2px solid #4CAF50; }
+        ul { list-style-type: none; padding: 0; max-width: 500px; margin: 20px auto; }
+        li { margin: 8px; padding: 10px; border: 1px solid #ddd; background: #f9f9f9; }
+        button { padding: 12px 25px; margin: 10px; background: #4CAF50; color: white; border: none; cursor: pointer; font-size: 16px; }
         button:hover { background: #45a049; }
+        .note { background: #fff3cd; padding: 15px; border-radius: 8px; margin: 20px auto; max-width: 600px; }
     </style>
 </head>
 <body>
-    <h1>Quét Mã QR</h1>
-    <button id="startScan">Bắt đầu quét</button>
-    <video id="video" width="400" height="300" style="display: none;"></video>
-    <canvas id="canvas" style="display: none;"></canvas>
-    <button id="complete" style="display: none;">Hoàn thành</button>
-    <h2>Danh sách mã đã quét</h2>
+    <h1>📱 Quét Mã QR</h1>
+    
+    <div class="note">
+        <strong>Lưu ý quan trọng:</strong><br>
+        Bạn PHẢI mở file HTML này qua <strong>localhost</strong> (không được mở trực tiếp file.html).<br>
+        Cách nhanh nhất: Dùng VS Code + Live Server hoặc chạy lệnh:<br>
+        <code>python -m http.server 8000</code> rồi truy cập http://localhost:8000
+    </div>
+
+    <div id="reader"></div>
+
+    <button id="complete" style="display: none;">✅ Hoàn thành & Tải file XLSX</button>
+
+    <h2>Danh sách mã đã quét (<span id="count">0</span>)</h2>
     <ul id="list"></ul>
 
     <script>
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        const listElement = document.getElementById('list');
-        const completeButton = document.getElementById('complete');
-        const startButton = document.getElementById('startScan');
-
         let scannedCodes = [];
-        let lastScannedCode = null;
-        let scanInterval;
-        let stream;
+        let lastScanned = null;
+        let scanner;
 
-        // Hàm bắt đầu quét
-        async function startScanning(facingMode = 'environment') {
-            try {
-                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode } });
-                video.srcObject = stream;
-                await video.play();
-                video.style.display = 'block';
-                completeButton.style.display = 'inline-block';
-                startButton.style.display = 'none';
-                scanInterval = setInterval(scanQR, 300); // Tăng tần suất quét lên một chút
-            } catch (err) {
-                console.error('Lỗi truy cập camera: ', err);
-                if (facingMode === 'environment') {
-                    // Thử fallback đến camera trước
-                    alert('Không thể truy cập camera sau. Thử camera trước...');
-                    startScanning('user');
-                } else {
-                    alert('Không thể truy cập camera. Vui lòng kiểm tra quyền truy cập và thử lại.');
-                }
-            }
-        }
-
-        // Sự kiện click nút bắt đầu
-        startButton.addEventListener('click', () => startScanning());
-
-        // Hàm quét QR
-        function scanQR() {
-            if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                canvas.height = video.videoHeight;
-                canvas.width = video.videoWidth;
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                const code = jsQR(imageData.data, imageData.width, imageData.height);
-
-                if (code && code.data !== lastScannedCode) {
-                    playBeep();
-                    addToList(code.data);
-                    lastScannedCode = code.data;
-                    // Reset lastScannedCode sau 2 giây để cho phép quét lại cùng mã nếu cần
-                    setTimeout(() => { lastScannedCode = null; }, 2000);
-                }
-            }
-        }
-
-        // Hàm phát âm thanh beep
+        // Phát âm thanh beep
         function playBeep() {
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             const oscillator = audioCtx.createOscillator();
-            oscillator.type = 'square';
-            oscillator.frequency.setValueAtTime(1000, audioCtx.currentTime);
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
             oscillator.connect(audioCtx.destination);
             oscillator.start();
-            setTimeout(() => oscillator.stop(), 200);
+            setTimeout(() => oscillator.stop(), 150);
         }
 
         // Thêm vào danh sách
         function addToList(code) {
             const now = new Date();
             const stt = scannedCodes.length + 1;
-            const item = { stt, time: now.toLocaleString('vi-VN'), code };
-
+            const item = {
+                stt: stt,
+                time: now.toLocaleString('vi-VN'),
+                code: code
+            };
             scannedCodes.push(item);
 
             const li = document.createElement('li');
-            li.textContent = `STT: ${item.stt} | Thời gian: ${item.time} | Mã: ${item.code}`;
-            listElement.appendChild(li);
+            li.innerHTML = `<strong>STT ${item.stt}</strong> | ${item.time} | <strong>${item.code}</strong>`;
+            document.getElementById('list').appendChild(li);
+            document.getElementById('count').textContent = stt;
         }
 
-        // Xử lý nút hoàn thành
-        completeButton.addEventListener('click', () => {
+        // Callback khi quét thành công
+        function onScanSuccess(decodedText) {
+            if (decodedText === lastScanned) return; // Tránh lặp lại mã giống nhau
+
+            playBeep();
+            addToList(decodedText);
+            lastScanned = decodedText;
+
+            // Cho phép quét lại cùng mã sau 2 giây
+            setTimeout(() => { lastScanned = null; }, 2000);
+        }
+
+        function onScanError(errorMessage) {
+            // Không cần hiển thị lỗi nhỏ
+        }
+
+        // Khởi tạo scanner
+        function startScanner() {
+            scanner = new Html5QrcodeScanner(
+                "reader",
+                {
+                    fps: 15,
+                    qrbox: { width: 280, height: 280 },
+                    aspectRatio: 1.0,
+                    showTorchButtonIfSupported: true,
+                    rememberLastUsedCamera: true
+                },
+                false
+            );
+
+            scanner.render(onScanSuccess, onScanError);
+
+            // Hiển thị nút hoàn thành
+            document.getElementById('complete').style.display = 'inline-block';
+        }
+
+        // Nút Hoàn thành
+        document.getElementById('complete').addEventListener('click', () => {
             if (scannedCodes.length === 0) {
                 alert('Chưa có mã nào được quét!');
                 return;
             }
 
+            // Dừng scanner
+            if (scanner) scanner.clear();
+
+            // Tạo file XLSX
             const ws = XLSX.utils.json_to_sheet(scannedCodes.map(item => ({
                 'Số thứ tự': item.stt,
                 'Ngày giờ': item.time,
                 'Mã đơn': item.code
             })));
+
             const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Danh sách mã QR');
+            XLSX.utils.book_append_sheet(wb, ws, 'Danh sách QR');
 
-            XLSX.writeFile(wb, 'danh_sach_ma_qr.xlsx');
+            XLSX.writeFile(wb, `danh_sach_ma_qr_${new Date().toISOString().slice(0,10)}.xlsx`);
 
-            // Dừng quét và camera
-            clearInterval(scanInterval);
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-            }
-            video.style.display = 'none';
-            completeButton.style.display = 'none';
-            startButton.style.display = 'inline-block';
-            alert('File đã được tải xuống!');
+            alert('✅ File đã được tải xuống thành công!');
         });
+
+        // Bắt đầu ngay khi tải trang
+        window.onload = startScanner;
     </script>
 </body>
 </html>
