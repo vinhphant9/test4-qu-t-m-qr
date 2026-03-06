@@ -27,7 +27,7 @@
 
     <script>
         let scannedCodes = [];
-        let lastScanned = null;
+        let scannedSet = new Set();  // Để lưu mã duy nhất, không quét lại
         let html5QrCode;
 
         // Phát âm thanh beep (cải thiện để hoạt động tốt hơn)
@@ -70,13 +70,11 @@
 
         // Callback khi quét thành công
         function onScanSuccess(decodedText, decodedResult) {
-            if (decodedText === lastScanned) return;
+            if (scannedSet.has(decodedText)) return;  // Không quét lại mã đã có
 
+            scannedSet.add(decodedText);
             playBeep();
             addToList(decodedText);
-            lastScanned = decodedText;
-
-            setTimeout(() => { lastScanned = null; }, 2000);
         }
 
         // Khởi tạo scanner với camera sau
