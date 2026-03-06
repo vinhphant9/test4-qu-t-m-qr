@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quét Mã QR và Tạo File XLSX</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; }
+        video { border: 1px solid #ccc; margin: 10px; }
+        ul { list-style-type: none; padding: 0; }
+        li { margin: 5px; padding: 5px; border: 1px solid #ddd; }
+        button { padding: 10px 20px; background: #4CAF50; color: white; border: none; cursor: pointer; }
+        button:hover { background: #45a049; }
+    </style>
+</head>
+<body>
+    <h1>Quét Mã QR</h1>
+    <video id="video" width="400" height="300" autoplay></video>
+    <canvas id="canvas" style="display: none;"></canvas>
+    <button id="complete">Hoàn thành</button>
+    <h2>Danh sách mã đã quét</h2>
+    <ul id="list"></ul>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const listElement = document.getElementById('list');
+        const completeButton = document.getElementById('complete');
+
+        let scannedCodes = [];
+        let lastScannedCode = null;
+        let scanInterval;
+
+        // Truy cập camera (camera sau nếu có)
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+            .then(stream => {
+                video.srcObject = stream;
+                video.play();
+                scanInterval = setInterval(scanQR, 500); // Quét mỗi 0.5 giây
+            })
+            .catch(err => {
+                console.error('Lỗi truy cập camera: ', err);
+                alert('Không thể truy cập camera. Vui lòng kiểm tra quyền truy cập.');
+            });
+
+        // Hàm quét QR
+        function scanQR() {
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                canvas.height = video.videoHeight;
+                canvas.width = video.videoWidth;
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const code = jsQR(imageData.data, imageData.width, imageData.height);
+
+                if (code && code.data !== lastScannedCode) {
+                    playBeep();
+                    addToList(code.data);
+                    lastScannedCode = code.data; // Tránh quét liên tục cùng mã
+                }
+            }
+        }
+
+        // Hàm phát âm thanh beep
+        function playBeep() {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            oscillator.type = 'square';
+            oscillator.frequency.setValueAtTime(1000, audioCtx.currentTime); // Tần số beep
+            oscillator.connect(audioCtx.destination);
+            oscillator.start();
+            setTimeout(() => oscillator.stop(), 200); // Beep trong 200ms
+        }
+
+        // Thêm vào danh sách
+        function addToList(code) {
+            const now = new Date();
+            const stt = scannedCodes.length + 1;
+            const item = { stt, time: now.toLocaleString('vi-VN'), code };
+
+            scannedCodes.push(item);
+
+            // Cập nhật hiển thị
+            const li = document.createElement('li');
+            li.textContent = `STT: ${item.stt} | Thời gian: ${item.time} | Mã: ${item.code}`;
+            listElement.appendChild(li);
+        }
+
+        // Xử lý nút hoàn thành
+        completeButton.addEventListener('click', () => {
+            if (scannedCodes.length === 0) {
+                alert('Chưa có mã nào được quét!');
+                return;
+            }
+
+            // Tạo file XLSX
+            const ws = XLSX.utils.json_to_sheet(scannedCodes.map(item => ({
+                'Số thứ tự': item.stt,
+                'Ngày giờ': item.time,
+                'Mã đơn': item.code
+            })));
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Danh sách mã QR');
+
+            // Tải file
+            XLSX.writeFile(wb, 'danh_sach_ma_qr.xlsx');
+
+            // Dừng quét (tùy chọn)
+            clearInterval(scanInterval);
+            alert('File đã được tải xuống!');
+        });
+    </script>
+</body>
+</html>
