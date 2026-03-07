@@ -1,132 +1,207 @@
-<!DOCTYPE html>
-<html lang="vi">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quét Mã QR</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <style>
-        body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
-        #reader { width: 100%; max-width: 400px; margin: 20px auto; border: 2px solid #4CAF50; }
-        ul { list-style-type: none; padding: 0; max-width: 500px; margin: 20px auto; }
-        li { margin: 8px; padding: 10px; border: 1px solid #ddd; background: #f9f9f9; }
-        button { padding: 12px 25px; margin: 10px; background: #4CAF50; color: white; border: none; cursor: pointer; font-size: 16px; }
-        button:hover { background: #45a049; }
-    </style>
-</head>
-<body>
-    <h1>Quét Mã QR</h1>
-    
-    <div id="reader"></div>
+<script>
 
-    <button id="complete" style="display: none;">Hoàn thành</button>
+const status = document.getElementById('status');
+const reader = document.getElementById('reader');
+const menuContainer = document.getElementById('menu-container');
+const qrListContainer = document.getElementById('qr-list-container');
+const qrList = document.getElementById('qr-list');
+const completeButton = document.getElementById('complete');
 
-    <h2>Danh sách</h2>
-    <ul id="list"></ul>
+let html5QrCode;
+let scannedCodes = [];
+let scannedSet = new Set();
 
-    <script>
-        let scannedCodes = [];
-        let scannedSet = new Set();  // Để lưu mã duy nhất, không quét lại
-        let html5QrCode;
+let returnCodes = [];
+let returnSet = new Set();
 
-        // Phát âm thanh beep (cải thiện để hoạt động tốt hơn)
-        function playBeep() {
-            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioCtx.state === 'suspended') {
-                audioCtx.resume().then(() => {
-                    const oscillator = audioCtx.createOscillator();
-                    oscillator.type = 'sine';
-                    oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
-                    oscillator.connect(audioCtx.destination);
-                    oscillator.start();
-                    setTimeout(() => oscillator.stop(), 150);
-                });
-            } else {
-                const oscillator = audioCtx.createOscillator();
-                oscillator.type = 'sine';
-                oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
-                oscillator.connect(audioCtx.destination);
-                oscillator.start();
-                setTimeout(() => oscillator.stop(), 150);
-            }
-        }
+let currentMode = '';
 
-        // Thêm vào danh sách
-        function addToList(code) {
-            const now = new Date();
-            const stt = scannedCodes.length + 1;
-            const item = {
-                stt: stt,
-                time: now.toLocaleString('vi-VN'),
-                code: code
-            };
-            scannedCodes.push(item);
+let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-            const li = document.createElement('li');
-            li.textContent = `${item.stt} | ${item.time} | ${item.code}`;
-            document.getElementById('list').appendChild(li);
-        }
+function createBeep() {
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
 
-        // Callback khi quét thành công
-        function onScanSuccess(decodedText, decodedResult) {
-            if (scannedSet.has(decodedText)) return;  // Không quét lại mã đã có
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
 
-            scannedSet.add(decodedText);
-            playBeep();
-            addToList(decodedText);
-        }
+    oscillator.frequency.value = 1000;
+    gainNode.gain.value = 0.5;
 
-        // Khởi tạo scanner với camera sau
-        function startScanner() {
-            html5QrCode = new Html5Qrcode("reader");
-            const config = {
-                fps: 15,
-                qrbox: { width: 280, height: 280 },
-                aspectRatio: 1.0
-            };
+    oscillator.start();
 
-            html5QrCode.start(
-                { facingMode: "environment" },  // Force camera sau
-                config,
-                onScanSuccess,
-                (errorMessage) => {}  // Ignore errors
-            ).then(() => {
-                document.getElementById('complete').style.display = 'inline-block';
-            }).catch((err) => {
-                console.error("Lỗi khởi động camera: ", err);
-                alert('Không thể khởi động camera sau. Kiểm tra quyền truy cập.');
-            });
-        }
+    setTimeout(() => {
+        oscillator.stop();
+    },200);
+}
 
-        // Nút Hoàn thành
-        document.getElementById('complete').addEventListener('click', () => {
-            if (scannedCodes.length === 0) {
-                alert('Chưa có mã nào!');
-                return;
-            }
+function startScanner(){
 
-            // Dừng scanner
-            if (html5QrCode) {
-                html5QrCode.stop().catch(err => console.error("Lỗi dừng scanner: ", err));
-            }
+    html5QrCode = new Html5Qrcode("reader");
 
-            // Tạo file XLSX
-            const ws = XLSX.utils.json_to_sheet(scannedCodes.map(item => ({
-                'Số thứ tự': item.stt,
-                'Ngày giờ': item.time,
-                'Mã đơn': item.code
-            })));
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Danh sách');
+    const config = {
+        fps:10,
+        qrbox:{width:250,height:250}
+    };
 
-            XLSX.writeFile(wb, 'danh_sach_ma_qr.xlsx');
+    html5QrCode.start(
+        {facingMode:"environment"},
+        config,
+        onScanSuccess
+    );
 
-            alert('File đã tải xuống!');
-        });
+}
 
-        // Bắt đầu ngay
-        window.onload = startScanner;
-    </script>
-</body>
-</html>
+document.getElementById('btn-quet-ma-don').onclick = () => {
+
+    currentMode = "don";
+
+    scannedCodes = [];
+    scannedSet.clear();
+
+    qrList.innerHTML="";
+
+    menuContainer.style.display="none";
+    reader.style.display="block";
+    status.style.display="block";
+    qrListContainer.style.display="block";
+
+    completeButton.style.display="inline-block";
+
+    status.textContent="Quét mã đơn";
+
+    startScanner();
+
+};
+
+document.getElementById('btn-quet-don-hoan').onclick = () => {
+
+    currentMode = "hoan";
+
+    returnCodes = [];
+    returnSet.clear();
+
+    qrList.innerHTML="";
+
+    menuContainer.style.display="none";
+    reader.style.display="block";
+    status.style.display="block";
+    qrListContainer.style.display="block";
+
+    completeButton.style.display="inline-block";
+
+    status.textContent="Quét đơn hoàn";
+
+    startScanner();
+
+};
+
+function onScanSuccess(decodedText){
+
+    if(currentMode==="don"){
+
+        if(scannedSet.has(decodedText)) return;
+
+        scannedSet.add(decodedText);
+
+        createBeep();
+
+        const now = new Date();
+
+        const item = {
+            stt:scannedCodes.length+1,
+            time:now.toLocaleString('vi-VN'),
+            code:decodedText
+        };
+
+        scannedCodes.push(item);
+
+        addToList(item);
+
+    }
+
+    if(currentMode==="hoan"){
+
+        if(returnSet.has(decodedText)) return;
+
+        returnSet.add(decodedText);
+
+        createBeep();
+
+        const now = new Date();
+
+        const item = {
+            stt:returnCodes.length+1,
+            time:now.toLocaleString('vi-VN'),
+            code:decodedText
+        };
+
+        returnCodes.push(item);
+
+        addToList(item);
+
+    }
+
+}
+
+function addToList(item){
+
+    const li = document.createElement("li");
+
+    li.textContent = `${item.stt} | ${item.time} | ${item.code}`;
+
+    qrList.appendChild(li);
+
+}
+
+completeButton.onclick = ()=>{
+
+    let data;
+    let filename;
+
+    if(currentMode==="don"){
+
+        data = scannedCodes;
+        filename = "ma_don.xlsx";
+
+    }else{
+
+        data = returnCodes;
+        filename = "don_hoan.xlsx";
+
+    }
+
+    if(data.length===0){
+
+        alert("Chưa có mã nào");
+
+        return;
+
+    }
+
+    html5QrCode.stop();
+
+    const ws = XLSX.utils.json_to_sheet(data.map(item=>({
+
+        "Số thứ tự":item.stt,
+        "Ngày giờ":item.time,
+        "Mã đơn":item.code
+
+    })));
+
+    const wb = XLSX.utils.book_new();
+
+    XLSX.utils.book_append_sheet(wb,ws,"Danh sách");
+
+    XLSX.writeFile(wb,filename);
+
+    alert("Đã tải file");
+
+    reader.style.display="none";
+    status.style.display="none";
+    qrListContainer.style.display="none";
+    menuContainer.style.display="block";
+
+};
+
+</script>
