@@ -131,35 +131,27 @@ function onScanSuccess(decodedText){
 
 currentQRCode = decodedText;
 
-if(!isRecording && currentQRCode !== lastQRCode){
+if(currentQRCode !== lastQRCode){
 
 createBeep();
 
-startRecording();
+if(isRecording){
+stopRecording();
+}
 
 lastQRCode = currentQRCode;
+
+setTimeout(()=>{
+startRecording();
+},200);
 
 status.textContent = 'Đang ghi video với mã: ' + currentQRCode;
 
 updateOverlay();
 
 }
-else if(isRecording && currentQRCode !== lastQRCode){
-
-createBeep();
-
-stopRecording();
-
-lastQRCode = currentQRCode;
-
-status.textContent = 'Video đã lưu. Quét QR tiếp theo để bắt đầu.';
-
-updateOverlay();
 
 }
-
-}
-
 function onScanFailure(error){
 }
 
